@@ -62,8 +62,12 @@ V simple_iterations(F &&f, G &&phi, V x0, double tolerance,
 template <typename F, typename DF, typename V>
 V newton(F &&f, DF &&df, V x0, double tolerance, size_t max_iterations) {
   return simple_iterations(
-      f, [f, df](V cur) { return cur - (f(cur) / df(cur)); }, x0, tolerance,
-      max_iterations);
+      f,
+      [f, df](V cur) {
+        std::cout << "df: " << df(cur) << std::endl;
+        return cur - (f(cur) / df(cur));
+      },
+      x0, tolerance, max_iterations);
 }
 
 template <typename F>
@@ -116,8 +120,9 @@ void iter_demo(size_t iter) {
   secant(f, 4.4, 4.5, tolerance, iter);
 
   // TODO
-  std::cout << "newton 0" << std::endl;
-  newton(f, df, 0.1, tolerance, iter);
+  std::cout << "newton 0 -------------------------------------------"
+            << std::endl;
+  newton(f, df, 0.321, tolerance, iter);
 }
 
 int main(int argc, char **argv) {
@@ -140,7 +145,7 @@ int main(int argc, char **argv) {
       for (int x = 0; x < dimensions; x++) {
         std::complex<double> z(1.5 * (2.0 * x - dimensions) / dimensions,
                                1.5 * (2.0 * y - dimensions) / dimensions);
-        z = newton(p, dp, z, 1e-16, 10); // TODO adapt iter number
+        z = newton(p, dp, z, 1e-16, 300); // TODO adapt iter number
         size_t idx = 0;
         double mindiff = std::abs(z - roots[0]);
         for (int i = 0; i < 3; i++) {

@@ -64,8 +64,11 @@ V newton(F &&f, DF &&df, V x0, double tolerance, size_t max_iterations) {
   return simple_iterations(
       f,
       [f, df](V cur) {
-        std::cout << "df: " << df(cur) << std::endl;
-        return cur - (f(cur) / df(cur));
+        auto ddf = df(cur);
+        if (ddf == std::real(0)) {
+          ddf = std::numeric_limits<double>::epsilon() * 2;
+        }
+        return cur - (f(cur) / ddf);
       },
       x0, tolerance, max_iterations);
 }
@@ -122,7 +125,7 @@ void iter_demo(size_t iter) {
   // TODO
   std::cout << "newton 0 -------------------------------------------"
             << std::endl;
-  newton(f, df, 0.321, tolerance, iter);
+  newton(f, df, 0.1, tolerance, iter);
 }
 
 int main(int argc, char **argv) {

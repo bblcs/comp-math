@@ -54,15 +54,15 @@ fn dft(input: &[Complex], inverse: bool) -> Vec<Complex> {
     let mut output = vec![Complex::new(0.0, 0.0); n];
     let sign = if inverse { 1.0 } else { -1.0 };
 
-    for (k, o) in output.iter_mut().enumerate() {
-        for (j, i) in input.iter().enumerate() {
+    for (k, out) in output.iter_mut().enumerate() {
+        for (j, inp) in input.iter().enumerate() {
             let theta = sign * 2.0 * PI * (k as f64) * (j as f64) / (n as f64);
             let w = Complex::exp(theta);
-            *o = o.add(i.mul(w));
+            *out = out.add(inp.mul(w));
         }
         if inverse {
-            o.re /= n as f64;
-            o.im /= n as f64;
+            out.re /= n as f64;
+            out.im /= n as f64;
         }
     }
     output
@@ -70,7 +70,7 @@ fn dft(input: &[Complex], inverse: bool) -> Vec<Complex> {
 
 // Au'(x) + Bu(x) = D
 #[derive(Copy, Clone)]
-struct BCond {
+struct BoundaryCondition {
     a: f64,
     b: f64,
     d: f64,
@@ -80,8 +80,8 @@ fn thomas<F>(
     x0: f64,
     xn: f64,
     n: usize,
-    bc_left: BCond,
-    bc_right: BCond,
+    bc_left: BoundaryCondition,
+    bc_right: BoundaryCondition,
     f: F,
 ) -> (Vec<f64>, Vec<f64>)
 where
@@ -173,12 +173,12 @@ fn main() {
     let conditions = vec![
         (
             "function left right",
-            BCond {
+            BoundaryCondition {
                 a: 0.,
                 b: 1.,
                 d: 0.,
             },
-            BCond {
+            BoundaryCondition {
                 a: 0.,
                 b: 1.,
                 d: 0.,
@@ -186,12 +186,12 @@ fn main() {
         ),
         (
             "function left, derivative right",
-            BCond {
+            BoundaryCondition {
                 a: 0.,
                 b: 1.,
                 d: 0.,
             },
-            BCond {
+            BoundaryCondition {
                 a: 1.,
                 b: 0.,
                 d: 1.,
@@ -199,12 +199,12 @@ fn main() {
         ),
         (
             "derivative left, function right",
-            BCond {
+            BoundaryCondition {
                 a: 1.,
                 b: 0.,
                 d: -1.,
             },
-            BCond {
+            BoundaryCondition {
                 a: 0.,
                 b: 1.,
                 d: 0.,

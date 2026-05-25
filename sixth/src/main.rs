@@ -56,9 +56,9 @@ fn dft(input: &[Complex], inverse: bool) -> Vec<Complex> {
 
     for (k, out) in output.iter_mut().enumerate() {
         for (j, inp) in input.iter().enumerate() {
-            let theta = sign * 2.0 * PI * (k as f64) * (j as f64) / (n as f64);
-            let w = Complex::exp(theta);
-            *out = out.add(inp.mul(w));
+            *out = out.add(inp.mul(Complex::exp(
+                sign * 2.0 * PI * (k as f64) * (j as f64) / (n as f64),
+            )));
         }
         if inverse {
             out.re /= n as f64;
@@ -68,7 +68,7 @@ fn dft(input: &[Complex], inverse: bool) -> Vec<Complex> {
     output
 }
 
-// Au'(x) + Bu(x) = D
+/// Au'(x) + Bu(x) = D
 #[derive(Copy, Clone)]
 struct BoundaryCondition {
     a: f64,
@@ -76,53 +76,83 @@ struct BoundaryCondition {
     d: f64,
 }
 
-fn thomas<F>(
+/// d/dt [g(t) du/dt] + h(t) du/dt + s(t) u = f(t)
+#[derive(Clone, Copy)]
+struct BVP2<G, H, S, F> {
+    g: G,
+    h: H,
+    s: S,
+    f: F,
+}
+
+fn thomas<G, H, S, F>(
+    bvp: BVP2<G, H, S, F>,
+    bc_left: BoundaryCondition,
+    bc_right: BoundaryCondition,
     x0: f64,
     xn: f64,
     n: usize,
-    bc_left: BoundaryCondition,
-    bc_right: BoundaryCondition,
-    f: F,
 ) -> (Vec<f64>, Vec<f64>)
 where
+    G: Fn(f64) -> f64,
+    H: Fn(f64) -> f64,
+    S: Fn(f64) -> f64,
     F: Fn(f64) -> f64,
 {
-    let h = (xn - x0) / (n as f64);
+    let tau = (xn - x0) / (n as f64);
     let mut x = vec![0.0; n + 1];
-    for (i, el) in x.iter_mut().enumerate() {
-        *el = x0 + (i as f64) * h;
+    for (i, ix) in x.iter_mut().enumerate() {
+        *ix = x0 + (i as f64) * tau;
     }
 
-    let mut alpha = vec![0.0; n + 1];
-    let mut beta = vec![0.0; n + 1];
+    //  a_i * u_{i-1} - b_i * u_i + c_i * u_{i+1} = d_i
+    let mut a = vec![0.0; n + 1];
+    let mut b = vec![0.0; n + 1];
+    let mut c = vec![0.0; n + 1];
+    let mut d = vec![0.0; n + 1];
 
-    let b0 = bc_left.a - bc_left.b * h;
-    let c0 = bc_left.a;
-    let d0 = bc_left.d * h + bc_left.a * h * h / 2.0 * f(x[0]);
-
-    alpha[1] = c0 / b0;
-    beta[1] = -d0 / b0;
+    a[0] = 0.0;
+    b[0] = bc_left.a / tau - bc_left.b;
+    c[0] = bc_left.a / tau;
+    d[0] = bc_left.d;
 
     for i in 1..n {
-        let ai = 1.0;
-        let bi = 2.0;
-        let ci = 1.0;
-        let di = h * h * f(x[i]);
+        let ti = x[i];
 
-        let den = bi - ai * alpha[i];
-        alpha[i + 1] = ci / den;
-        beta[i + 1] = (ai * beta[i] - di) / den;
+        let pre_g = (bvp.g)(ti - tau / 2.0);
+        let post_g = (bvp.g)(ti + tau / 2.0);
+        let hi = (bvp.h)(ti);
+        let si = (bvp.s)(ti);
+
+        a[i] = pre_g / (tau * tau) - hi / (2.0 * tau);
+        c[i] = post_g / (tau * tau) + hi / (2.0 * tau);
+        b[i] = a[i] + c[i] - si;
+        d[i] = (bvp.f)(ti);
     }
 
-    let mut y = vec![0.0; n + 1];
-    let num = bc_right.d * h - bc_right.a * h * h / 2.0 * f(x[n]) + bc_right.a * beta[n];
-    let den = bc_right.a + bc_right.b * h - bc_right.a * alpha[n];
-    y[n] = num / den;
+    a[n] = bc_right.a / tau;
+    b[n] = bc_right.a / tau + bc_right.b;
+    c[n] = 0.0;
+    d[n] = -bc_right.d;
+
+    let mut alpha = vec![0.0; n + 2];
+    let mut beta = vec![0.0; n + 2];
+
+    for i in 0..=n {
+        let den = b[i] - a[i] * alpha[i];
+        alpha[i + 1] = c[i] / den;
+        beta[i + 1] = (a[i] * beta[i] - d[i]) / den;
+    }
+
+    let mut u = vec![0.0; n + 1];
+
+    u[n] = beta[n + 1];
 
     for i in (0..n).rev() {
-        y[i] = alpha[i + 1] * y[i + 1] + beta[i + 1];
+        u[i] = alpha[i + 1] * u[i + 1] + beta[i + 1];
     }
-    (x, y)
+
+    (x, u)
 }
 
 fn solve_fourier(n: usize) -> (Vec<f64>, Vec<f64>) {
@@ -213,13 +243,22 @@ fn main() {
     ];
 
     println!("\n====================thomas==================");
+    // y'' = sin(x)
+    // d/dt [1 * du/dt] + 0 * du/dt + 0 * u = sin(x)
+    let bvp = BVP2 {
+        g: |_| 1.0,
+        h: |_| 0.0,
+        s: |_| 0.0,
+        f: |x: f64| x.sin(),
+    };
+
     for (name, bc_l, bc_r) in conditions {
         println!("\ncond: {}", name);
         println!("{:>4} | {:>8} | {:>8}", "n", "max err", "times");
 
         let mut prev_err = 0.0;
         for &n in test_set {
-            let (x, y) = thomas(0.0, PI, n, bc_l, bc_r, |x| x.sin());
+            let (x, y) = thomas(bvp, bc_l, bc_r, 0.0, PI, n);
             let err = calc_max_error(&x, &y, exact_sol);
 
             if prev_err > 0.0 {
